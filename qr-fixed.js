@@ -117,7 +117,10 @@ window.onload = () => {
     if (qrScanner) {
       adjustScannerSettings();
     }
-  }, 500));
+  }, 300)); // 300ms로 단축하여 더 빠르게 반응
+  
+  // 초기 로드 시 화면 크기에 맞게 설정 최적화
+  setTimeout(adjustScannerSettings, 500);
   
   // Html5Qrcode 라이브러리 로드 확인
   if (typeof Html5Qrcode !== 'function') {
@@ -147,7 +150,37 @@ function adjustScannerSettings() {
   const viewportHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
   
   // 화면 크기에 맞게 QR 박스 크기 조정
-  const dimension = Math.min(viewportWidth, viewportHeight) * 0.6;
+  let dimension;
+  
+  // 가로 모드인지 확인
+  const isLandscape = viewportWidth > viewportHeight;
+  
+  if (isLandscape) {
+    // 가로 모드에서는 화면 높이의 60%로 QR 박스 설정
+    dimension = Math.min(viewportWidth * 0.4, viewportHeight * 0.6);
+  } else {
+    // 세로 모드에서는 화면 너비의 70%로 QR 박스 설정
+    dimension = viewportWidth * 0.7;
+  }
+  
+  // QR 스캐너 영역 크기 조정
+  const readerElement = document.getElementById('reader');
+  if (readerElement) {
+    // 모바일 기기 감지
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    
+    if (isMobile && !isLandscape) {
+      // 모바일 세로 모드에서는 화면 높이의 35%로 제한
+      readerElement.style.maxHeight = '35vh';
+    } else if (isMobile && isLandscape) {
+      // 모바일 가로 모드에서는 화면 높이의 60%로 제한
+      readerElement.style.maxHeight = '60vh';
+    } else {
+      // 데스크톱에서는 높이 제한 완화
+      readerElement.style.maxHeight = '45vh';
+    }
+  }
+  
   if (qrScanner && qrScanner.isScanning) {
     try {
       qrScanner.pause();
@@ -156,7 +189,7 @@ function adjustScannerSettings() {
       scanConfig.qrbox = { width: dimension, height: dimension };
       
       // 가로 세로 비율 최적화
-      if (viewportWidth > viewportHeight) {
+      if (isLandscape) {
         scanConfig.aspectRatio = 4/3; // 가로 모드
       } else {
         scanConfig.aspectRatio = 3/4; // 세로 모드

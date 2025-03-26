@@ -94,26 +94,96 @@
     /* 입고, 출고 등 버튼을 바로 보이게 함 */
     .action-buttons {
       position: fixed;
-      bottom: 20px;
+      bottom: 0;
       left: 0;
       right: 0;
-      background-color: rgba(0, 0, 0, 0.8);
-      padding: 10px;
+      background-color: rgba(0, 0, 0, 0.9);
+      padding: 12px;
       text-align: center;
       z-index: 999;
       border-top: 1px solid #00f0ff;
     }
     
-    /* 입력 필드 컨테이너 조정 */
-    .input-container {
-      margin-bottom: 80px; /* 하단 고정 버튼을 위한 공간 */
+    /* QR 스캐너와 입력 필드를 한 화면에 배치하기 위한 컨테이너 */
+    .scanner-form-container {
+      display: flex;
+      flex-direction: column;
+      max-width: 480px;
+      margin: 0 auto;
+      position: relative;
+      padding-bottom: 60px; /* 하단 버튼을 위한 공간 */
     }
     
-    /* 모바일에서 필드 크기 최적화 */
+    /* QR 스캐너 영역 최적화 */
+    #reader {
+      width: 100%;
+      max-height: 45vh;
+      margin: 0 auto;
+      overflow: hidden;
+    }
+    
+    /* 입력 필드를 컴팩트하게 정렬 */
+    .input-fields {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+      padding: 0 5px;
+    }
+    
+    /* 상태 및 요약 정보 표시 영역 */
+    .status-container {
+      margin-top: 8px;
+      padding: 0 5px;
+    }
+    
+    #status, #summary {
+      margin: 5px 0;
+      font-size: 0.9rem;
+    }
+    
+    /* 모바일 화면에서 최적화 */
     @media (max-width: 480px) {
       #reader {
-        width: 100%;
-        max-height: 40vh; /* 화면 높이의 40%로 제한 */
+        max-height: 38vh;
+      }
+      
+      .scanner-form-container {
+        height: calc(100vh - 130px);
+        justify-content: space-between;
+      }
+      
+      input {
+        font-size: 14px;
+        padding: 8px;
+      }
+      
+      .action-buttons button {
+        padding: 10px 15px;
+        font-size: 15px;
+      }
+    }
+    
+    /* 가로 모드에서는 QR 스캐너와 입력 폼을 나란히 배치 */
+    @media (min-width: 800px) and (orientation: landscape) {
+      .scanner-form-container {
+        flex-direction: row;
+        max-width: 90%;
+        align-items: flex-start;
+        gap: 15px;
+      }
+      
+      #reader {
+        width: 60%;
+        max-height: 70vh;
+      }
+      
+      .form-container {
+        width: 40%;
+      }
+      
+      .input-fields {
+        grid-template-columns: 1fr;
       }
     }
   </style>
@@ -142,17 +212,24 @@
     </div>
   </div>
 
-  <div id="reader" style="width: 100%; max-width: 480px; margin: auto;"></div>
-  
-  <div class="input-container">
-    <input id="code" placeholder="상품코드" readonly />
-    <input id="name" placeholder="상품명" />
-    <input id="quantity" type="number" placeholder="수량" value="1" />
-    <input id="user" placeholder="담당자명" />
+  <!-- QR 스캐너와 입력 필드를 한 컨테이너에 통합 -->
+  <div class="scanner-form-container">
+    <div id="reader"></div>
+    
+    <div class="form-container">
+      <div class="input-fields">
+        <input id="code" placeholder="상품코드" readonly />
+        <input id="name" placeholder="상품명" />
+        <input id="quantity" type="number" placeholder="수량" value="1" />
+        <input id="user" placeholder="담당자명" />
+      </div>
+      
+      <div class="status-container">
+        <p id="status"></p>
+        <div id="summary"></div>
+      </div>
+    </div>
   </div>
-
-  <p id="status"></p>
-  <div id="summary"></div>
   
   <!-- 하단에 고정된 액션 버튼 -->
   <div class="action-buttons">
