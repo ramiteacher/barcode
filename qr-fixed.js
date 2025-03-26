@@ -170,14 +170,22 @@ function adjustScannerSettings() {
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     
     if (isMobile && !isLandscape) {
-      // 모바일 세로 모드에서는 화면 높이의 35%로 제한
-      readerElement.style.maxHeight = '35vh';
+      // 모바일 세로 모드에서는 화면 높이의 35%에서 50%로 증가
+      readerElement.style.maxHeight = '50vh';
     } else if (isMobile && isLandscape) {
-      // 모바일 가로 모드에서는 화면 높이의 60%로 제한
-      readerElement.style.maxHeight = '60vh';
+      // 모바일 가로 모드에서는 화면 높이의 60%에서 75%로 증가
+      readerElement.style.maxHeight = '75vh';
     } else {
       // 데스크톱에서는 높이 제한 완화
-      readerElement.style.maxHeight = '45vh';
+      readerElement.style.maxHeight = '55vh';
+    }
+    
+    // 아이폰 전용 스타일 추가
+    if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+      // 아이폰에서는 스캐너 크기를 더 키움
+      readerElement.style.maxHeight = '65vh';
+      readerElement.style.width = '95%';
+      readerElement.style.margin = '0 auto';
     }
   }
   
@@ -186,6 +194,13 @@ function adjustScannerSettings() {
       qrScanner.pause();
       
       // 화면 크기에 따라 스캔 설정 조정
+      // 아이폰에서는 더 큰 스캔 영역 사용
+      const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+      if (isIOS) {
+        // iOS에서는 스캔 영역을 더 크게 설정
+        dimension = Math.max(dimension, viewportWidth * 0.85);
+      }
+      
       scanConfig.qrbox = { width: dimension, height: dimension };
       
       // 가로 세로 비율 최적화
@@ -195,9 +210,34 @@ function adjustScannerSettings() {
         scanConfig.aspectRatio = 3/4; // 세로 모드
       }
       
+      // iOS 최적화 설정
+      if (isIOS) {
+        // iOS에서는 속도보다 정확도 우선
+        scanConfig.fps = 10;
+        // iOS에서는 바코드 디텍터 사용 시도
+        scanConfig.experimentalFeatures = {
+          useBarCodeDetectorIfSupported: true
+        };
+      }
+      
       setTimeout(() => {
         if (qrScanner && qrScanner.isScanning) {
           qrScanner.resume();
+          
+          // iOS에서 카메라 설정 추가 최적화
+          if (isIOS) {
+            try {
+              const videoElement = qrScanner.getVideoElement();
+              if (videoElement) {
+                // iOS에서 비디오 품질 향상
+                videoElement.style.width = '100%';
+                videoElement.style.height = '100%';
+                videoElement.style.objectFit = 'cover';
+              }
+            } catch (e) {
+              console.warn("iOS 비디오 설정 최적화 실패", e);
+            }
+          }
         }
       }, 300);
     } catch (error) {
