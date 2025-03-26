@@ -11,6 +11,7 @@ function handleCredentialResponse(response) {
   const payload = decodeJWT(response.credential);
   email = payload.email;
   localStorage.setItem("userEmail", email);
+  sessionStorage.setItem("userEmail", email); // PWA에서도 사용하기 위해 세션 스토리지에도 저장
   document.getElementById("loginSection").style.display = "none";
   document.getElementById("sheetSetup").style.display = "block";
   document.getElementById("userInfo").innerText = `${email}님 환영합니다!`;
@@ -32,14 +33,52 @@ async function requestFullPermissions() {
         
         if (testRes.ok) {
           console.log("✅ 기존 토큰이 유효합니다.");
+          
+          // 세션 스토리지에도 토큰 저장 (PWA 지원)
+          sessionStorage.setItem("accessToken", localStorage.getItem("accessToken"));
+          
+          // 만료 시간 설정 (1시간)
+          const expiryTime = Date.now() + 3600000;
+          localStorage.setItem("tokenExpiry", expiryTime.toString());
+          sessionStorage.setItem("tokenExpiry", expiryTime.toString());
+          
           return; // 기존 토큰이 유효하므로 종료
         }
         
         // 유효하지 않으면 제거하고 계속 진행
         localStorage.removeItem("accessToken");
+        sessionStorage.removeItem("accessToken");
       } catch (e) {
         localStorage.removeItem("accessToken");
+        sessionStorage.removeItem("accessToken");
         console.warn("⚠️ 저장된 토큰 검증 실패, 새로운 권한을 요청합니다:", e);
+      }
+    } else {
+      // 세션 스토리지 확인 (PWA에서 새로고침한 경우)
+      const sessionToken = sessionStorage.getItem("accessToken");
+      if (sessionToken) {
+        try {
+          const testRes = await fetch("https://sheets.googleapis.com/v4/spreadsheets?fields=spreadsheetId", {
+            headers: { Authorization: "Bearer " + sessionToken }
+          });
+          
+          if (testRes.ok) {
+            console.log("✅ 세션 토큰이 유효합니다.");
+            localStorage.setItem("accessToken", sessionToken);
+            
+            // 만료 시간 갱신
+            const expiryTime = Date.now() + 3600000;
+            localStorage.setItem("tokenExpiry", expiryTime.toString());
+            sessionStorage.setItem("tokenExpiry", expiryTime.toString());
+            
+            return;
+          }
+          
+          sessionStorage.removeItem("accessToken");
+        } catch (e) {
+          sessionStorage.removeItem("accessToken");
+          console.warn("⚠️ 세션 토큰 검증 실패:", e);
+        }
       }
     }
     
@@ -49,7 +88,15 @@ async function requestFullPermissions() {
       scope: "https://www.googleapis.com/auth/spreadsheets",
       callback: (res) => {
         if (res && res.access_token) {
+          // 로컬 스토리지와 세션 스토리지 모두에 토큰 저장
           localStorage.setItem("accessToken", res.access_token);
+          sessionStorage.setItem("accessToken", res.access_token);
+          
+          // 만료 시간 설정 (1시간)
+          const expiryTime = Date.now() + 3600000;
+          localStorage.setItem("tokenExpiry", expiryTime.toString());
+          sessionStorage.setItem("tokenExpiry", expiryTime.toString());
+          
           console.log("✅ 모든 권한이 성공적으로 부여되었습니다.");
           
           // 선택적: UI 업데이트 또는 사용자에게 권한 승인 완료 알림

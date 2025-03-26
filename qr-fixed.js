@@ -203,6 +203,24 @@ function startQrScanner() {
       return;
     }
 
+    // 아이폰 바코드 인식을 위한 스캐너 설정 최적화
+    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
+    
+    // 아이폰을 위한 스캔 설정 조정
+    if (isIOS) {
+      scanConfig.fps = 10; // iOS에서는 프레임 속도를 낮추어 안정성 향상
+      // 아이폰에서 바코드 인식을 위한 추가 설정
+      scanConfig.experimentalFeatures = {
+        useBarCodeDetectorIfSupported: true
+      };
+      // iOS에서 특정 코드 유형에 집중
+      scanConfig.formatsToSupport = [
+        Html5QrcodeSupportedFormats.QR_CODE,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.CODE_128
+      ];
+    }
+    
     // QR 스캐너 초기화
     qrScanner = new Html5Qrcode("reader");
     
@@ -212,9 +230,9 @@ function startQrScanner() {
     // 상태 업데이트
     document.getElementById("status").innerText = "📷 카메라 권한 요청 중...";
     
-    // 확장된 스캔 옵션으로 스캐너 시작 - 여기서 facingMode만 전달
+    // 확장된 스캔 옵션으로 스캐너 시작
     qrScanner.start(
-      { facingMode: "environment" }, // 오직 facingMode만 포함
+      { facingMode: "environment" }, // 기본 카메라 설정
       scanConfig,
       async (code) => {
         // 연속 스캔 방지 (200ms 내 재스캔 무시)
@@ -224,6 +242,7 @@ function startQrScanner() {
         
         if (!selectedAction) {
           document.getElementById("status").innerText = "❗ 먼저 입고/출고/하자/반품 중 하나를 선택하세요";
+          setAction('입고'); // 자동으로 입고 선택
           return;
         }
 
@@ -341,6 +360,12 @@ function startQrScanner() {
         }
       },
       (err) => {
+        // iOS에서 바코드 인식 오류를 최소화하기 위한 처리
+        if (isIOS && err.includes("Failed to decode")) {
+          // iOS에서 바코드 디코딩 오류는 무시 (일시적인 현상일 수 있음)
+          return;
+        }
+        
         // 심각한 오류만 로그로 남김 (일반적인 스캔 실패는 무시)
         if (err.indexOf("User denied camera permission") === 0) {
           document.getElementById("status").innerText = "❌ 카메라 권한을 허용해주세요";
@@ -372,6 +397,36 @@ function startQrScanner() {
       
       document.getElementById("status").innerText = errorMessage;
     });
+    
+    // iOS에서 바코드 인식을 위한 추가 최적화
+    if (isIOS) {
+      setTimeout(() => {
+        // iOS 카메라 안정화를 위한 딜레이 후 포커스 자동 조정 시도
+        if (qrScanner && qrScanner.isScanning) {
+          const videoElement = qrScanner.getVideoElement();
+          if (videoElement) {
+            // iOS에서 비디오 설정 최적화
+            videoElement.setAttribute('playsinline', true);
+            videoElement.setAttribute('autoplay', true);
+            
+            // iOS에서 바코드 인식을 위한 비디오 품질 향상 시도
+            const track = videoElement.srcObject?.getVideoTracks()[0];
+            if (track) {
+              try {
+                const capabilities = track.getCapabilities();
+                if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
+                  track.applyConstraints({
+                    advanced: [{ focusMode: 'continuous' }]
+                  }).catch(e => console.warn('iOS 포커스 설정 실패:', e));
+                }
+              } catch (e) {
+                console.warn('iOS 카메라 설정 최적화 실패:', e);
+              }
+            }
+          }
+        }
+      }, 1000);
+    }
   } catch (error) {
     console.error("QR 스캐너 시작 오류:", error);
     document.getElementById("status").innerText = "❌ QR 스캐너 시작 실패: " + error.message;
@@ -643,6 +698,7 @@ async function submitAction(code) {
   }
 }
 
+// 토큰 가져오기 함수 개선 - PWA용 인증 유지를 위한 수정
 async function getAccessToken() {
   try {
     // 캐시된 토큰이 있는지 확인
@@ -656,15 +712,41 @@ async function getAccessToken() {
         });
         
         if (testRes.ok) {
+          // 세션 스토리지에도 복제하여 PWA에서도 사용 가능하게 함
+          sessionStorage.setItem("accessToken", cached);
           return cached; // 토큰이 유효함
         }
         
         // 토큰이 유효하지 않으면 제거
         localStorage.removeItem("accessToken");
+        sessionStorage.removeItem("accessToken");
         console.warn("토큰이 만료되었습니다. 새로운 토큰을 요청합니다.");
       } catch (e) {
         localStorage.removeItem("accessToken");
+        sessionStorage.removeItem("accessToken");
         console.warn("토큰 검증 중 오류, 새로운 토큰 요청:", e);
+      }
+    } else {
+      // 세션 스토리지에서 토큰 확인 (웹앱 새로고침 시 사용)
+      const sessionToken = sessionStorage.getItem("accessToken");
+      if (sessionToken) {
+        try {
+          const testRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=properties.title`, {
+            headers: { Authorization: "Bearer " + sessionToken }
+          });
+          
+          if (testRes.ok) {
+            // 유효한 경우 로컬 스토리지에도 저장
+            localStorage.setItem("accessToken", sessionToken);
+            return sessionToken;
+          }
+          
+          // 유효하지 않으면 제거
+          sessionStorage.removeItem("accessToken");
+        } catch (e) {
+          sessionStorage.removeItem("accessToken");
+          console.warn("세션 토큰 검증 실패:", e);
+        }
       }
     }
     
@@ -675,7 +757,16 @@ async function getAccessToken() {
         scope: "https://www.googleapis.com/auth/spreadsheets",
         callback: (res) => {
           if (res && res.access_token) {
+            // 로컬 스토리지와 세션 스토리지 모두에 저장
             localStorage.setItem("accessToken", res.access_token);
+            sessionStorage.setItem("accessToken", res.access_token);
+            
+            // PWA에서 인증 유지를 위한 추가 조치
+            // 만료 시간을 현재 시간 + 1시간으로 저장 (Google OAuth 토큰 기본 만료 시간)
+            const expiryTime = Date.now() + 3600000; // 1시간
+            localStorage.setItem("tokenExpiry", expiryTime.toString());
+            sessionStorage.setItem("tokenExpiry", expiryTime.toString());
+            
             resolve(res.access_token);
           } else {
             console.error("토큰 획득 실패:", res);

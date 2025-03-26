@@ -50,7 +50,7 @@
     /* 앱 설치 안내 배너 */
     #installBanner {
       display: none;
-      background-color: #1e293b;
+      background-color: rgba(30, 41, 59, 0.95);
       color: white;
       padding: 15px;
       border-radius: 10px;
@@ -59,6 +59,7 @@
       border: 2px solid #00f0ff;
       box-shadow: 0 4px 8px rgba(0,0,0,0.2);
       position: relative;
+      z-index: 1000;
     }
 
     .banner-title {
@@ -81,6 +82,40 @@
       font-size: 18px;
       cursor: pointer;
     }
+    
+    /* 홈 화면에 추가 가이드 */
+    .install-guide {
+      margin-top: 8px;
+      padding: 8px;
+      border-left: 3px solid #00f0ff;
+      font-size: 14px;
+    }
+    
+    /* 입고, 출고 등 버튼을 바로 보이게 함 */
+    .action-buttons {
+      position: fixed;
+      bottom: 20px;
+      left: 0;
+      right: 0;
+      background-color: rgba(0, 0, 0, 0.8);
+      padding: 10px;
+      text-align: center;
+      z-index: 999;
+      border-top: 1px solid #00f0ff;
+    }
+    
+    /* 입력 필드 컨테이너 조정 */
+    .input-container {
+      margin-bottom: 80px; /* 하단 고정 버튼을 위한 공간 */
+    }
+    
+    /* 모바일에서 필드 크기 최적화 */
+    @media (max-width: 480px) {
+      #reader {
+        width: 100%;
+        max-height: 40vh; /* 화면 높이의 40%로 제한 */
+      }
+    }
   </style>
 </head>
 <body>
@@ -101,23 +136,31 @@
     </div>
     <p>더 빠르고 편리하게 사용하려면 앱을 설치해보세요!</p>
     <button id="installButton">앱 설치하기</button>
+    
+    <div id="installGuide" class="install-guide">
+      <!-- 기기별 설치 가이드는 자바스크립트로 동적 삽입됨 -->
+    </div>
   </div>
 
   <div id="reader" style="width: 100%; max-width: 480px; margin: auto;"></div>
-  <input id="code" placeholder="상품코드" readonly />
-  <input id="name" placeholder="상품명" />
-  <input id="quantity" type="number" placeholder="수량" />
-  <input id="user" placeholder="담당자명" />
+  
+  <div class="input-container">
+    <input id="code" placeholder="상품코드" readonly />
+    <input id="name" placeholder="상품명" />
+    <input id="quantity" type="number" placeholder="수량" value="1" />
+    <input id="user" placeholder="담당자명" />
+  </div>
 
-  <div>
+  <p id="status"></p>
+  <div id="summary"></div>
+  
+  <!-- 하단에 고정된 액션 버튼 -->
+  <div class="action-buttons">
     <button class="action 입고" onclick="setAction('입고')">입고</button>
     <button class="action 출고" onclick="setAction('출고')">출고</button>
     <button class="action 반품" onclick="setAction('반품')">반품</button>
     <button class="action 하자" onclick="setAction('하자')">하자</button>
   </div>
-
-  <p id="status"></p>
-  <div id="summary"></div>
 
   <script src="qr.js"></script>
   <script src="qr-fixed.js"></script>
@@ -219,6 +262,11 @@
           sheetTitle.innerText = "📄 시트 접근 오류 발생";
         }
       }
+      
+      // 입고 버튼을 기본 선택으로 설정
+      if (typeof setAction === 'function') {
+        setTimeout(() => setAction('입고'), 1000);
+      }
     });
 
     // PWA 설치 관련 코드
@@ -226,26 +274,142 @@
     const installButton = document.getElementById('installButton');
     const installBanner = document.getElementById('installBanner');
     const closeBanner = document.getElementById('closeBanner');
+    const installGuide = document.getElementById('installGuide');
 
     // 서비스 워커 등록
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js')
+        navigator.serviceWorker.register('service-worker.js')
           .then(reg => console.log('서비스 워커 등록 성공:', reg.scope))
           .catch(err => console.log('서비스 워커 등록 실패:', err));
       });
     }
 
-    // 이전에 배너를 닫았는지 확인
-    function hasUserDismissedInstall() {
-      return localStorage.getItem('installBannerDismissed') === 'true';
+    // 최근에 설치 배너를 닫았는지 확인 (3일간 유효)
+    function hasRecentlyDismissedInstall() {
+      const dismissedTime = parseInt(localStorage.getItem('installBannerDismissedTime') || '0');
+      const now = Date.now();
+      // 3일(259,200,000 밀리초) 내에 닫았으면 true 반환
+      return now - dismissedTime < 259200000;
     }
 
     // 배너 닫기 이벤트
     closeBanner.addEventListener('click', () => {
       installBanner.style.display = 'none';
-      localStorage.setItem('installBannerDismissed', 'true');
+      localStorage.setItem('installBannerDismissedTime', Date.now().toString());
     });
+    
+    // 브라우저 종류 감지
+    function detectBrowser() {
+      const userAgent = navigator.userAgent;
+      
+      if (/iPhone|iPad|iPod/.test(userAgent) && !window.MSStream) {
+        return 'safari';
+      } else if (/Android/.test(userAgent)) {
+        if (/NAVER/.test(userAgent)) {
+          return 'naver';
+        } else if (/whale/.test(userAgent)) {
+          return 'whale';
+        } else if (/SamsungBrowser/.test(userAgent)) {
+          return 'samsung';
+        } else if (/Chrome/.test(userAgent)) {
+          return 'chrome';
+        } else {
+          return 'android-other';
+        }
+      } else if (/Chrome/.test(userAgent)) {
+        return 'chrome';
+      } else if (/Firefox/.test(userAgent)) {
+        return 'firefox';
+      } else if (/Edge|Edg/.test(userAgent)) {
+        return 'edge';
+      } else {
+        return 'unknown';
+      }
+    }
+    
+    // 브라우저별 설치 가이드 생성
+    function createInstallGuide() {
+      const browser = detectBrowser();
+      let guideHtml = '';
+      
+      switch(browser) {
+        case 'safari':
+          guideHtml = `
+            <strong>사파리에서 설치하기:</strong><br>
+            1. 하단 공유 버튼 <span style="font-size:18px">⏫</span> 탭<br>
+            2. "홈 화면에 추가" 선택
+          `;
+          break;
+        case 'chrome':
+          guideHtml = `
+            <strong>크롬에서 설치하기:</strong><br>
+            1. 메뉴 <span style="font-size:18px">⋮</span> 탭<br>
+            2. "앱 설치" 또는 "홈 화면에 추가" 선택
+          `;
+          break;
+        case 'naver':
+          guideHtml = `
+            <strong>네이버 웨일에서 설치하기:</strong><br>
+            1. 메뉴 <span style="font-size:18px">⋮</span> 탭<br>
+            2. "홈 화면에 추가" 선택
+          `;
+          break;
+        case 'whale':
+          guideHtml = `
+            <strong>네이버 웨일에서 설치하기:</strong><br>
+            1. 메뉴 <span style="font-size:18px">⋮</span> 탭<br>
+            2. "홈 화면에 추가" 선택
+          `;
+          break;
+        case 'samsung':
+          guideHtml = `
+            <strong>삼성 인터넷에서 설치하기:</strong><br>
+            1. 메뉴 <span style="font-size:18px">≡</span> 탭<br>
+            2. "홈 화면에 추가" 선택
+          `;
+          break;
+        case 'firefox':
+          guideHtml = `
+            <strong>파이어폭스에서 설치하기:</strong><br>
+            1. 메뉴 <span style="font-size:18px">≡</span> 탭<br>
+            2. "앱 설치" 또는 "홈 화면에 추가" 선택
+          `;
+          break;
+        case 'edge':
+          guideHtml = `
+            <strong>엣지에서 설치하기:</strong><br>
+            1. 메뉴 <span style="font-size:18px">…</span> 탭<br>
+            2. "앱 설치" 선택
+          `;
+          break;
+        default:
+          guideHtml = `
+            <strong>앱 설치 방법:</strong><br>
+            브라우저 메뉴에서 "앱 설치" 또는<br>
+            "홈 화면에 추가" 옵션을 찾아 선택하세요.
+          `;
+      }
+      
+      installGuide.innerHTML = guideHtml;
+    }
+
+    // 설치 안내 표시 여부 결정 및 표시
+    function showInstallPromotion() {
+      // 이미 앱이 설치되어 있거나 최근에 배너를 닫은 경우는 표시하지 않음
+      if (window.matchMedia('(display-mode: standalone)').matches || 
+          window.navigator.standalone === true ||
+          localStorage.getItem('appInstalled') === 'true' ||
+          hasRecentlyDismissedInstall()) {
+        return;
+      }
+      
+      // 설치 가이드 생성
+      createInstallGuide();
+      
+      // 설치 배너 표시
+      installBanner.style.display = 'block';
+    }
 
     // 앱 설치 프롬프트 표시
     window.addEventListener('beforeinstallprompt', (e) => {
@@ -254,10 +418,8 @@
       // 이벤트 저장
       deferredPrompt = e;
       
-      // 사용자가 이전에 닫지 않았다면 배너 표시
-      if (!hasUserDismissedInstall()) {
-        installBanner.style.display = 'block';
-      }
+      // 설치 안내 표시
+      showInstallPromotion();
     });
 
     // 설치 버튼 클릭 이벤트
@@ -272,6 +434,10 @@
         deferredPrompt = null;
         // 설치 배너 숨기기
         installBanner.style.display = 'none';
+      } else {
+        // beforeinstallprompt가 지원되지 않는 브라우저의 경우
+        // 수동 설치 가이드만 표시
+        alert('브라우저 메뉴를 이용하여 앱을 설치해주세요.');
       }
     });
 
@@ -282,17 +448,21 @@
       localStorage.setItem('appInstalled', 'true');
     });
 
-    // 이미 앱이 설치되어 있는지 확인 (스탠드얼론 모드 확인)
-    if (window.matchMedia('(display-mode: standalone)').matches || 
-        window.navigator.standalone === true) {
-      console.log('앱이 이미 설치되어 있습니다');
-      localStorage.setItem('appInstalled', 'true');
-    } else if (localStorage.getItem('appInstalled') !== 'true' && 
-              !hasUserDismissedInstall()) {
-      // 앱이 설치되지 않았고 사용자가 배너를 닫지 않은 경우
-      // beforeinstallprompt 이벤트가 발생하면 배너가 표시됨
-      console.log('앱 설치 준비 - 프롬프트 대기 중');
-    }
+    // 페이지 로드 시 설치 안내 표시
+    window.addEventListener('load', () => {
+      // iOS에서는 beforeinstallprompt가 지원되지 않으므로 직접 설치 안내 표시
+      if (/iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream) {
+        if (!window.navigator.standalone && 
+            localStorage.getItem('appInstalled') !== 'true' && 
+            !hasRecentlyDismissedInstall()) {
+          createInstallGuide();
+          installBanner.style.display = 'block';
+        }
+      } else {
+        // beforeinstallprompt 이벤트가 지원되는 브라우저는 해당 이벤트에서 처리
+        showInstallPromotion();
+      }
+    });
   </script>
 </body>
 </html>
