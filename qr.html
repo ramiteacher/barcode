@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>QR 인식 재고 관리</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <link rel="stylesheet" href="style.css" />
+  <!-- PWA 관련 메타태그 및 매니페스트 링크 추가 -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#00f0ff" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <style>
+    .top-button {
+      background-color: #1e293b;
+      color: #00f0ff;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-weight: bold;
+      border: 1px solid #00f0ff;
+      margin-left: 6px;
+      cursor: pointer;
+    }
+    .top-button:hover {
+      background-color: #00f0ff;
+      color: #000;
+    }
+    
+    /* 설치 버튼 스타일 */
+    #installButton {
+      background-color: #00f0ff;
+      color: #000;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-weight: bold;
+      cursor: pointer;
+      margin: 10px auto;
+      display: block;
+      font-size: 16px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+    #installButton:hover {
+      background-color: #00d6e0;
+      transform: translateY(-2px);
+      transition: all 0.2s;
+    }
+
+    /* 앱 설치 안내 배너 */
+    #installBanner {
+      display: none;
+      background-color: #1e293b;
+      color: white;
+      padding: 15px;
+      border-radius: 10px;
+      margin: 10px auto;
+      max-width: 480px;
+      border: 2px solid #00f0ff;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      position: relative;
+    }
+
+    .banner-title {
+      font-weight: bold;
+      color: #00f0ff;
+      margin-bottom: 8px;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .banner-close {
+      position: absolute;
+      right: 10px;
+      top: 10px;
+      background: none;
+      border: none;
+      color: #00f0ff;
+      font-size: 18px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div style="display: flex; justify-content: space-between; padding: 4px 8px; align-items: center;">
+    <div id="sheetTitle" style="color: #00f0ff;">📄 시트 불러오는 중...</div>
+    <div>
+      <button id="sheetButton" class="top-button">시트</button>
+      <button id="adminButton" class="top-button">관리자</button>
+    </div>
+  </div>
+
+  <!-- 앱 설치 안내 배너 -->
+  <div id="installBanner">
+    <button class="banner-close" id="closeBanner">✕</button>
+    <div class="banner-title">
+      <span>📱</span>
+      <span>앱 설치 안내</span>
+    </div>
+    <p>더 빠르고 편리하게 사용하려면 앱을 설치해보세요!</p>
+    <button id="installButton">앱 설치하기</button>
+  </div>
+
+  <div id="reader" style="width: 100%; max-width: 480px; margin: auto;"></div>
+  <input id="code" placeholder="상품코드" readonly />
+  <input id="name" placeholder="상품명" />
+  <input id="quantity" type="number" placeholder="수량" />
+  <input id="user" placeholder="담당자명" />
+
+  <div>
+    <button class="action 입고" onclick="setAction('입고')">입고</button>
+    <button class="action 출고" onclick="setAction('출고')">출고</button>
+    <button class="action 반품" onclick="setAction('반품')">반품</button>
+    <button class="action 하자" onclick="setAction('하자')">하자</button>
+  </div>
+
+  <p id="status"></p>
+  <div id="summary"></div>
+
+  <script src="qr.js"></script>
+  <script src="qr-fixed.js"></script>
+  <script>
+    // COOP 오류 해결을 위한 개선된 함수
+    async function getSheetAccessToken() {
+      // 이미 로드된 qr-fixed.js의 getAccessToken 함수 사용 시도
+      if (typeof getAccessToken === 'function') {
+        return await getAccessToken();
+      }
+      
+      // 또는 직접 구현
+      return new Promise((resolve) => {
+        const cached = localStorage.getItem("accessToken");
+        if (cached) {
+          // 캐시된 토큰 검증
+          fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=properties.title`, {
+            headers: { Authorization: "Bearer " + cached }
+          })
+          .then(res => {
+            if (res.ok) return resolve(cached);
+            // 유효하지 않으면 새로 요청
+            localStorage.removeItem("accessToken");
+            requestNewToken();
+          })
+          .catch(() => {
+            localStorage.removeItem("accessToken");
+            requestNewToken();
+          });
+        } else {
+          requestNewToken();
+        }
+        
+        function requestNewToken() {
+          const tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: "192783618509-d0ev6sp714cr4d43cfumfaum005g485t.apps.googleusercontent.com",
+            scope: "https://www.googleapis.com/auth/spreadsheets", // 전체 권한으로 통일
+            callback: (res) => {
+              if (res && res.access_token) {
+                localStorage.setItem("accessToken", res.access_token);
+                resolve(res.access_token);
+              } else {
+                resolve(null);
+              }
+            }
+          });
+          
+          // 이전에 동의했다면 조용히 요청
+          tokenClient.requestAccessToken({prompt: ''});
+        }
+      });
+    }
+
+    document.addEventListener("DOMContentLoaded", async () => {
+      const sheetId = new URLSearchParams(location.search).get("sheetId");
+      const sheetTitle = document.getElementById("sheetTitle");
+      const sheetBtn = document.getElementById("sheetButton");
+      const adminBtn = document.getElementById("adminButton");
+
+      sheetBtn.onclick = () => {
+        if (sheetId) {
+          window.open(`https://docs.google.com/spreadsheets/d/${sheetId}`, "_blank");
+        } else {
+          alert("❌ 시트 ID가 없습니다.");
+        }
+      };
+
+      adminBtn.onclick = () => {
+        if (sheetId) {
+          window.location.href = `admin.html?sheetId=${sheetId}`;
+        } else {
+          alert("❌ 시트 ID가 없습니다.");
+        }
+      };
+
+      // OAuth 인증을 사용하여 시트 제목 가져오기
+      if (sheetId) {
+        try {
+          const token = await getSheetAccessToken();
+          
+          if (!token) {
+            sheetTitle.innerText = "📄 로그인이 필요합니다";
+            return;
+          }
+          
+          const response = await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=properties.title`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          
+          if (!response.ok) {
+            throw new Error(`API 오류: ${response.status}`);
+          }
+          
+          const data = await response.json();
+          sheetTitle.innerText = `📄 연결된 시트: ${data.properties.title}`;
+        } catch (error) {
+          console.error("시트 정보 가져오기 실패:", error);
+          sheetTitle.innerText = "📄 시트 접근 오류 발생";
+        }
+      }
+    });
+
+    // PWA 설치 관련 코드
+    let deferredPrompt;
+    const installButton = document.getElementById('installButton');
+    const installBanner = document.getElementById('installBanner');
+    const closeBanner = document.getElementById('closeBanner');
+
+    // 서비스 워커 등록
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .then(reg => console.log('서비스 워커 등록 성공:', reg.scope))
+          .catch(err => console.log('서비스 워커 등록 실패:', err));
+      });
+    }
+
+    // 이전에 배너를 닫았는지 확인
+    function hasUserDismissedInstall() {
+      return localStorage.getItem('installBannerDismissed') === 'true';
+    }
+
+    // 배너 닫기 이벤트
+    closeBanner.addEventListener('click', () => {
+      installBanner.style.display = 'none';
+      localStorage.setItem('installBannerDismissed', 'true');
+    });
+
+    // 앱 설치 프롬프트 표시
+    window.addEventListener('beforeinstallprompt', (e) => {
+      // 브라우저 기본 설치 프롬프트 방지
+      e.preventDefault();
+      // 이벤트 저장
+      deferredPrompt = e;
+      
+      // 사용자가 이전에 닫지 않았다면 배너 표시
+      if (!hasUserDismissedInstall()) {
+        installBanner.style.display = 'block';
+      }
+    });
+
+    // 설치 버튼 클릭 이벤트
+    installButton.addEventListener('click', async () => {
+      if (deferredPrompt) {
+        // 설치 프롬프트 표시
+        deferredPrompt.prompt();
+        // 사용자 응답 대기
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`사용자 선택: ${outcome}`);
+        // 이벤트 참조 정리
+        deferredPrompt = null;
+        // 설치 배너 숨기기
+        installBanner.style.display = 'none';
+      }
+    });
+
+    // 앱이 이미 설치된 경우
+    window.addEventListener('appinstalled', () => {
+      console.log('앱이 설치되었습니다!');
+      installBanner.style.display = 'none';
+      localStorage.setItem('appInstalled', 'true');
+    });
+
+    // 이미 앱이 설치되어 있는지 확인 (스탠드얼론 모드 확인)
+    if (window.matchMedia('(display-mode: standalone)').matches || 
+        window.navigator.standalone === true) {
+      console.log('앱이 이미 설치되어 있습니다');
+      localStorage.setItem('appInstalled', 'true');
+    } else if (localStorage.getItem('appInstalled') !== 'true' && 
+              !hasUserDismissedInstall()) {
+      // 앱이 설치되지 않았고 사용자가 배너를 닫지 않은 경우
+      // beforeinstallprompt 이벤트가 발생하면 배너가 표시됨
+      console.log('앱 설치 준비 - 프롬프트 대기 중');
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>네온 재고관리 시스템</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://rawgit.com/schmich/instascan-builds/master/instascan.min.js"></script>
+    <script src="sheet.js" defer></script>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <h2>📦 네온 재고관리 시스템</h2>
+    <div id="loginSection">
+      <div id="g_id_onload"
+           data-client_id="192783618509-d0ev6sp714cr4d43cfumfaum005g485t.apps.googleusercontent.com"
+           data-callback="handleCredentialResponse"
+           data-auto_prompt="true"></div>
+      <div class="g_id_signin" data-type="standard"></div>
+    </div>
+    <div id="sheetSetup" style="display:none;">
+      <p id="userInfo"></p>
+      <input id="sheetName" placeholder="시트 이름을 입력하세요" />
+      <button id="createBtn">시트 생성</button>
+    </div>
+    <div id="errorMessage" style="color: red; display: none;"></div>
+
+    <script>
+      // 카메라 권한 확인 함수
+      async function checkCameraPermission() {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          // 스트림 사용 후 해제
+          stream.getTracks().forEach(track => track.stop());
+          return true;
+        } catch (error) {
+          console.error("카메라 접근 권한 오류:", error);
+          document.getElementById("errorMessage").textContent = 
+            "QR 스캐너를 사용하려면 카메라 접근 권한이 필요합니다: " + error.message;
+          document.getElementById("errorMessage").style.display = "block";
+          return false;
+        }
+      }
+
+      // QR 스캐너 페이지로 이동하는 함수
+      async function navigateToQrScanner(sheetId) {
+        // 권한 확인 후 이동
+        if (await checkCameraPermission()) {
+          window.location.href = `qr.html?sheetId=${sheetId}`;
+        }
+      }
+
+      window.onload = () => {
+        const email = localStorage.getItem("userEmail");
+        const cachedSheetId = localStorage.getItem("sheetId");
+        
+        if (email && cachedSheetId) {
+          // QR 스캐너 페이지로 이동 전 유효성 검사
+          if (cachedSheetId.trim() === "") {
+            document.getElementById("errorMessage").textContent = "유효하지 않은 시트 ID입니다. 다시 로그인해주세요.";
+            document.getElementById("errorMessage").style.display = "block";
+            localStorage.removeItem("sheetId");
+            // 로그인 섹션 표시
+            document.getElementById("loginSection").style.display = "block";
+          } else {
+            navigateToQrScanner(cachedSheetId);
+          }
+        } else if (email) {
+          document.getElementById("loginSection").style.display = "none";
+          document.getElementById("sheetSetup").style.display = "block";
+          document.getElementById("userInfo").innerText = `${email}님 환영합니다!`;
+        }
+      }
+    </script>
+  </body>
+</html>
